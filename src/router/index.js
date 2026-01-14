@@ -31,12 +31,10 @@ window.__demo = window.__demo ?? {
 // 3) 调试辅助：路由表快照 + 打印工具
 // -----------------------------
 function hasRoutePath(path) {
-  // router.getRoutes() 返回当前所有 route records
   return router.getRoutes().some((r) => r.path === path);
 }
 
 function routeTableSnapshot() {
-  // 只展示 path + name，够用且不太长
   return router
     .getRoutes()
     .map((r) => ({ path: r.path, name: r.name ?? "-" }))
@@ -65,14 +63,13 @@ function printNavHeader(navId, to, from) {
 }
 
 function pause(label, navId, extra = {}) {
-  // 统一的断点入口：你一停下来就知道停在哪个分支
   console.groupCollapsed(
     `%c[NAV#${navId}] PAUSE @ ${label}`,
     "color:#d97706;font-weight:bold;"
   );
   Object.entries(extra).forEach(([k, v]) => console.log(k, v));
   console.groupEnd();
-  debugger; // 关键：每次都会暂停
+  debugger;
 }
 
 // -----------------------------
@@ -93,19 +90,19 @@ function addDynamicRouteOnce(navId) {
 
   console.log(`[NAV#${navId}] ✅ addRoute: /admin 已添加`);
   console.log(`[NAV#${navId}]    现在 hasRoute('/admin') =`, hasRoutePath("/admin"));
+
 }
 
 // -----------------------------
-// 5) 全局前置守卫（调试版）
+// 5) 全局前置守卫（next 版）
 // -----------------------------
-router.beforeEach((to, from) => {
+router.beforeEach((to, from, next) => {
   window.__NAV_COUNTER__ = (window.__NAV_COUNTER__ || 0) + 1;
   const navId = window.__NAV_COUNTER__;
 
-  // 每次进入守卫都打印一次总览（折叠日志）
   printNavHeader(navId, to, from);
 
-  // 断点 1：进入守卫
+  // 断点：每次进守卫都停
   pause("ENTER_GUARD", navId, {
     "to.fullPath": to.fullPath,
     "to.matched.length": to.matched.length,
@@ -117,21 +114,22 @@ router.beforeEach((to, from) => {
   // -------------------------
   if (window.__demo.ALWAYS_REPLACE) {
     pause("ALWAYS_REPLACE (WILL LOOP)", navId, {
-      hint: "每次都 return { ...to, replace:true } 会触发新导航，进而无限重复 beforeEach",
+      hint: "每次都 next({ ...to, replace:true }) 会触发新导航，进而无限重复 beforeEach",
     });
-    return { ...to, replace: true };
+    // Router4: next(location) 触发重定向（新导航）
+    return next({ ...to, replace: true });
   }
 
   // -------------------------
   // 分支 1：鉴权（依赖 meta.requireAuth）
-  // 注意：当 matched.length=0 时，to.meta 可能为空
   // -------------------------
   if (to.meta?.requireAuth && !window.__demo.token) {
     pause("AUTH_REDIRECT -> /login", navId, {
       reason: "to.meta.requireAuth=true 且 token=false",
       "to.meta": to.meta,
     });
-    return "/login"; // 触发新导航 => beforeEach 会再跑一次
+    // Router3/4 风格：next('/login') 触发重定向（新导航）
+    return next("/login");
   }
 
   // -------------------------
@@ -141,12 +139,11 @@ router.beforeEach((to, from) => {
     pause("REDIRECT /login -> /dashboard", navId, {
       reason: "useRedirect=true 且 token=true 且 to.path=/login",
     });
-    return "/dashboard"; // 触发新导航
+    return next("/dashboard");
   }
 
   // -------------------------
   // 分支 3：动态路由演示
-  // token=true 访问 /admin，且 아직 未加动态路由
   // -------------------------
   if (window.__demo.token && to.path === "/admin" && !window.__demo.dynamicAdded) {
     pause("DYNAMIC: ABOUT TO addRoute('/admin')", navId, {
@@ -162,29 +159,31 @@ router.beforeEach((to, from) => {
       "AFTER addRoute: hasRoute('/admin')": hasRoutePath("/admin"),
       "to.matched.length (STILL old nav)": to.matched.length,
       explain:
-        "注意：即使路由表更新了，当前这趟导航的 to.matched 不会自动变；需要重导航才能重新匹配",
+        "即使路由表更新了，当前这趟导航的 to.matched 不会自动变；需要重导航才能重新匹配",
     });
 
     if (window.__demo.useDynamicFix) {
-      pause("DYNAMIC_FIX: return { ...to, replace:true } (RE-NAVIGATE)", navId, {
+      pause("DYNAMIC_FIX: next({ ...to, replace:true }) (RE-NAVIGATE)", navId, {
         explain:
           "这会触发一次新导航到同一个地址 /admin，因此 beforeEach 会再跑一遍，第二次 matched.length 通常会变为 1",
       });
-      return { ...to, replace: true }; // 触发新导航（同地址）
+      // 关键：next(location) → 新导航 → beforeEach 再执行
+      return next({ ...to, replace: true });
     } else {
-      pause("NO_DYNAMIC_FIX: return true (CONTINUE SAME NAV)", navId, {
+      pause("NO_DYNAMIC_FIX: next() (CONTINUE SAME NAV)", navId, {
         explain:
-          "这只会继续当前这趟导航，不会触发第二次 beforeEach；如果这趟 nav 开始时没匹配到 /admin，则最终 matched.length 仍为 0",
+          "这只会继续当前这趟导航，不会触发第二次 beforeEach；若开始时没匹配到 /admin，则最终 matched.length 仍为 0",
       });
-      return true; // 不触发新导航
+      // 关键：next() → 继续当前导航（不新开导航）
+      return next();
     }
   }
 
   // -------------------------
   // 分支 4：正常放行
   // -------------------------
-  pause("PASS: return true", navId, {
+  pause("PASS: next()", navId, {
     explain: "放行当前这趟导航，不会触发新导航，因此不会再次进入 beforeEach",
   });
-  return true;
+  return next();
 });
