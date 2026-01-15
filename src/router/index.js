@@ -9,6 +9,12 @@ const routes = [
   { path: "/", component: { render: () => h("div", "Home") } },
   { path: "/login", component: { render: () => h("div", "Login") } },
   { path: "/dashboard", component: { render: () => h("div", "Dashboard") } },
+     // ★ 新增：需要登录权限的静态路由
+  {
+    path: "/secret",
+    component: { render: () => h("div", "Secret Page (requireAuth)") },
+    meta: { requireAuth: true }
+  }
 ];
 
 export const router = createRouter({

@@ -7,6 +7,7 @@
       <button @click="go('/login')">Go /login</button>
       <button @click="go('/dashboard')">Go /dashboard</button>
       <button @click="go('/admin')">Go /admin (dynamic)</button>
+      <button @click="go('/secret')">Go /secret (requireAuth)</button>
     </div>
 
     <div style="margin-bottom:12px;">
